@@ -228,9 +228,9 @@ class DAIA:
         system_prompt = self.settings.get_system_prompt()
         self._trim_history(channel_id, system_prompt)
 
-        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         history = self.history.get(channel_id)
         last_index = len(history) - 1
+        messages: List[Dict[str, Any]] = []
         for idx, entry in enumerate(history):
             content = entry["content"]
             if isinstance(content, list):
@@ -242,14 +242,52 @@ class DAIA:
             messages.append({"role": entry["role"], "content": content})
         return messages
 
-    async def generate_response(self, channel_id: int) -> str:
+    def _build_input_items(self, channel_id: int) -> List[Dict[str, Any]]:
         messages = self._build_messages(channel_id)
-        response = self.client.chat.completions.create(
+        items: List[Dict[str, Any]] = []
+
+        for message in messages:
+            role = message["role"]
+            content_items: List[Dict[str, Any]] = []
+            for item in message["content"]:
+                if item.get("type") == "text":
+                    if role == "assistant":
+                        content_items.append({"type": "output_text", "text": item.get("text", "")})
+                    else:
+                        content_items.append({"type": "input_text", "text": item.get("text", "")})
+                elif item.get("type") == "image_url":
+                    image_url = item.get("image_url", {}).get("url") or item.get("image_url")
+                    detail = item.get("image_url", {}).get("detail")
+                    image_payload: Dict[str, Any] = {"url": image_url} if image_url else {}
+                    if detail:
+                        image_payload["detail"] = detail
+                    content_items.append({"type": "input_image", "image_url": image_payload})
+
+            if content_items:
+                items.append({"type": "message", "role": role, "content": content_items})
+
+        return items
+
+    async def generate_response(self, channel_id: int) -> str:
+        system_prompt = self.settings.get_system_prompt()
+        input_items = self._build_input_items(channel_id)
+        response = self.client.responses.create(
             model=self.model_name,
-            messages=messages,
-            max_tokens=self.max_response_tokens,
+            instructions=system_prompt,
+            input=input_items,
+            max_output_tokens=self.max_response_tokens,
         )
-        return response.choices[0].message.content or "(no response)"
+
+        output_text = getattr(response, "output_text", None)
+        if output_text:
+            return output_text
+
+        for item in getattr(response, "output", []) or []:
+            if item.get("type") == "message":
+                for content in item.get("content", []):
+                    if content.get("type") == "output_text":
+                        return content.get("text", "")
+        return "(no response)"
 
 
 def run() -> None:
