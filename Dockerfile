@@ -4,8 +4,9 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    UV_SYSTEM_PYTHON=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src \
+    VIRTUAL_ENV=/app/.venv \
+    PATH=/app/.venv/bin:$PATH
 
 RUN pip install --no-cache-dir uv
 
