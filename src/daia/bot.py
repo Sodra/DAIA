@@ -53,7 +53,7 @@ class SettingsManager:
 
         return {
             "system_prompt": "-1",
-            "model_name": "gpt-4.1",
+            "model_name": "gpt-5.2",
             "channel_ids": [],
             "guild_ids": [],
             "admin_role_ids": [],
@@ -179,7 +179,7 @@ class DAIA:
     def __init__(self) -> None:
         self.settings = SettingsManager()
         self.history = HistoryStore()
-        self.model_name = self.settings.get_setting("model_name", "gpt-4.1")
+        self.model_name = self.settings.get_setting("model_name", "gpt-5.2")
         self.max_history_tokens = int(self.settings.get_setting("max_history_tokens", 4096))
         self.max_response_tokens = int(self.settings.get_setting("max_response_tokens", 512))
         self.image_detail_latest = self.settings.get_setting("image_detail_latest", "high")
