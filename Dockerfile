@@ -10,7 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock* /app/
-RUN uv sync --no-cache --system
+RUN uv sync --no-cache
 
 COPY src /app/src
 COPY config /app/config
