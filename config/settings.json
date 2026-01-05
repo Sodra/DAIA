@@ -1,7 +1,7 @@
 {
   "system_prompt": "-1",
   "model_name": "gpt-4.1",
-  "channel_ids": [],
+  "channel_ids": [1071518668896346162],
   "guild_ids": [],
   "admin_role_ids": [],
   "admin_user_ids": [],
