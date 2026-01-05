@@ -1,0 +1,29 @@
+services:
+  daia:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: daia
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /app/data
+      CONFIG_DIR: /app/config
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  updater:
+    build:
+      context: .
+      dockerfile: docker/updater.Dockerfile
+    container_name: daia-updater
+    environment:
+      REPO_URL: https://github.com/Sodra/DAIA.git
+      BRANCH: main
+      INTERVAL_SECONDS: 30
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/repo
+    working_dir: /repo
+    restart: unless-stopped

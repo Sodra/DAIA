@@ -1,0 +1,18 @@
+[project]
+name = "daia"
+version = "0.1.0"
+description = "Discord AI Assistant"
+requires-python = ">=3.11"
+dependencies = [
+  "discord.py>=2.3.2",
+  "openai>=1.0.0",
+  "tiktoken>=0.7.0",
+  "ftfy>=6.1.0",
+  "langchain>=0.2.0",
+  "requests>=2.31.0",
+  "pillow>=10.0.0",
+  "python-dotenv>=1.0.0",
+]
+
+[tool.uv]
+package = false
