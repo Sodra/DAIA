@@ -36,31 +36,36 @@ class SettingsManager:
         os.makedirs(DATA_DIR, exist_ok=True)
 
     def _load_settings(self) -> None:
+        defaults = self._load_default_settings()
         if os.path.exists(SETTINGS_PATH):
             with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-                self.settings = json.load(f)
-            return
-
-        if os.path.exists(DEFAULT_SETTINGS_PATH):
-            with open(DEFAULT_SETTINGS_PATH, "r", encoding="utf-8") as f:
-                self.settings = json.load(f)
-        else:
-            self.settings = {
-                "system_prompt": "-1",
-                "model_name": "gpt-4.1",
-                "channel_ids": [],
-                "guild_ids": [],
-                "admin_role_ids": [],
-                "admin_user_ids": [],
-                "admin_channel_id": 0,
-                "all_channels": False,
-                "pattern": "[Dd][Aa][Ii][Aa]",
-                "max_history_tokens": 4096,
-                "max_response_tokens": 512,
-            }
+                saved = json.load(f)
+            defaults.update(saved)
+        self.settings = defaults
 
         with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(self.settings, f, indent=2)
+
+    def _load_default_settings(self) -> Dict[str, Any]:
+        if os.path.exists(DEFAULT_SETTINGS_PATH):
+            with open(DEFAULT_SETTINGS_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+
+        return {
+            "system_prompt": "-1",
+            "model_name": "gpt-4.1",
+            "channel_ids": [],
+            "guild_ids": [],
+            "admin_role_ids": [],
+            "admin_user_ids": [],
+            "admin_channel_id": 0,
+            "all_channels": False,
+            "pattern": "[Dd][Aa][Ii][Aa]",
+            "max_history_tokens": 4096,
+            "max_response_tokens": 512,
+            "image_detail_latest": "high",
+            "image_detail_history": "low",
+        }
 
     def get_setting(self, key: str, default: Any = None) -> Any:
         return self.settings.get(key, default)
@@ -177,6 +182,8 @@ class DAIA:
         self.model_name = self.settings.get_setting("model_name", "gpt-4.1")
         self.max_history_tokens = int(self.settings.get_setting("max_history_tokens", 4096))
         self.max_response_tokens = int(self.settings.get_setting("max_response_tokens", 512))
+        self.image_detail_latest = self.settings.get_setting("image_detail_latest", "high")
+        self.image_detail_history = self.settings.get_setting("image_detail_history", "low")
         self.token_counter = TokenCounter(self.model_name)
 
         openai_key = os.getenv("OPENAI_API_KEY")
@@ -222,8 +229,17 @@ class DAIA:
         self._trim_history(channel_id, system_prompt)
 
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-        for entry in self.history.get(channel_id):
-            messages.append({"role": entry["role"], "content": entry["content"]})
+        history = self.history.get(channel_id)
+        last_index = len(history) - 1
+        for idx, entry in enumerate(history):
+            content = entry["content"]
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "image_url":
+                        detail = self.image_detail_latest if idx == last_index else self.image_detail_history
+                        item.setdefault("image_url", {})
+                        item["image_url"]["detail"] = detail
+            messages.append({"role": entry["role"], "content": content})
         return messages
 
     async def generate_response(self, channel_id: int) -> str:

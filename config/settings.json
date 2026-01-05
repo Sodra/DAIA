@@ -9,5 +9,7 @@
   "all_channels": false,
   "pattern": "[Dd][Aa][Ii][Aa]",
   "max_history_tokens": 4096,
-  "max_response_tokens": 512
+  "max_response_tokens": 512,
+  "image_detail_latest": "high",
+  "image_detail_history": "low"
 }
