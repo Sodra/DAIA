@@ -333,7 +333,8 @@ def run() -> None:
         )
 
         try:
-            reply_text = await daia.generate_response(message.channel.id)
+            async with message.channel.typing():
+                reply_text = await daia.generate_response(message.channel.id)
         except Exception:
             logger.exception("OpenAI request failed")
             reply_text = "Sorry, I had trouble generating a response."
