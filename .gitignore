@@ -1,5 +1,6 @@
 /.env
 /data/
+/MISSING_LAALA_FEATURES.md
 __pycache__/
 *.pyc
 *.pyo

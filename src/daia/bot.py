@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -8,9 +9,12 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 import discord
+import ftfy
 import tiktoken
 from dotenv import load_dotenv
 from openai import OpenAI
+from PIL import Image
+from io import BytesIO
 
 load_dotenv()
 
@@ -24,6 +28,21 @@ SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
 DEFAULT_SETTINGS_PATH = os.path.join(CONFIG_DIR, "settings.json")
 PROMPT_PATH = os.path.join(CONFIG_DIR, "daia_prompt.txt")
 HISTORY_PATH = os.path.join(DATA_DIR, "daia_history.json")
+BROKEN_IMAGE_PATH = os.path.join(CONFIG_DIR, "brokenimage.txt")
+
+BROKEN_IMAGE_BASE64 = ""
+if os.path.exists(BROKEN_IMAGE_PATH):
+    with open(BROKEN_IMAGE_PATH, "r", encoding="utf-8") as f:
+        BROKEN_IMAGE_BASE64 = f.read().strip()
+
+
+def split_message(text: str, limit: int = 1800) -> List[str]:
+    return [text[i : i + limit] for i in range(0, len(text), limit)]
+
+
+async def send_long_message(channel: discord.abc.Messageable, message: str) -> None:
+    for chunk in split_message(message):
+        await channel.send(ftfy.fix_text(chunk))
 
 
 class SettingsManager:
@@ -193,17 +212,42 @@ class DAIA:
 
         self.client = OpenAI(api_key=openai_key)
 
-    def _build_content_items(self, message: discord.Message) -> List[Dict[str, Any]]:
+    async def _build_content_items(self, message: discord.Message, is_trigger_message: bool) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
         if message.content:
             items.append({"type": "text", "text": message.content})
 
+        image_datas: List[str] = []
         for attachment in message.attachments:
             if attachment.content_type and attachment.content_type.startswith("image/"):
+                try:
+                    image_data = await attachment.read()
+                    try:
+                        img = Image.open(BytesIO(image_data))
+                        img.verify()
+                        image_base64 = base64.b64encode(image_data).decode("utf-8")
+                        data_uri = f"data:{attachment.content_type};base64,{image_base64}"
+                        image_datas.append(data_uri)
+                    except Exception as img_error:
+                        logger.warning("Invalid image detected: %s", img_error)
+                        if BROKEN_IMAGE_BASE64:
+                            image_datas.append(BROKEN_IMAGE_BASE64)
+                        await message.channel.send(
+                            "⚠️ One of the images appears to be corrupted and has been replaced with a placeholder."
+                        )
+                except Exception as e:
+                    logger.error("Error processing image attachment: %s", e)
+                    if BROKEN_IMAGE_BASE64:
+                        image_datas.append(BROKEN_IMAGE_BASE64)
+                    await message.channel.send("⚠️ Failed to process an image attachment.")
+
+        if image_datas:
+            detail_level = "high" if is_trigger_message else "low"
+            for data_uri in image_datas:
                 items.append(
                     {
                         "type": "image_url",
-                        "image_url": {"url": attachment.url, "detail": "low"},
+                        "image_url": {"url": data_uri, "detail": detail_level},
                     }
                 )
 
@@ -304,6 +348,19 @@ def run() -> None:
     @client.event
     async def on_ready() -> None:
         logger.info("DAIA logged in as %s", client.user)
+        admin_channel_id = daia.settings.get_setting("admin_channel_id", 0)
+        if admin_channel_id:
+            admin_channel = client.get_channel(admin_channel_id)
+            if admin_channel:
+                await admin_channel.send("LAALA online")
+                daia.history.add(
+                    admin_channel.id,
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "LAALA online"}],
+                        "timestamp": datetime.utcnow().isoformat(),
+                    },
+                )
 
     @client.event
     async def on_message(message: discord.Message) -> None:
@@ -319,10 +376,22 @@ def run() -> None:
                 return
 
         mentioned = client.user in message.mentions if client.user else False
-        if not mentioned and not re.search(pattern, message.content or ""):
+        is_reply_to_bot = False
+        if message.reference:
+            try:
+                referenced = message.reference.resolved
+                if referenced is None and message.reference.message_id:
+                    referenced = await message.channel.fetch_message(message.reference.message_id)
+                if referenced and referenced.author == client.user:
+                    is_reply_to_bot = True
+            except Exception:
+                logger.debug("Failed to resolve reply reference", exc_info=True)
+
+        is_called = mentioned or re.search(pattern, message.content or "") is not None
+        if not is_called and not is_reply_to_bot:
             return
 
-        content_items = daia._build_content_items(message)
+        content_items = await daia._build_content_items(message, is_called or is_reply_to_bot)
         daia.history.add(
             message.channel.id,
             {
@@ -348,6 +417,6 @@ def run() -> None:
             },
         )
 
-        await message.channel.send(reply_text)
+        await send_long_message(message.channel, reply_text)
 
     client.run(bot_key)
